@@ -1,0 +1,16 @@
+# Build artifacts
+*.o
+*.elf
+*.iso
+*.bin
+
+# Dependencies (fetched at build time)
+doomgeneric/
+limine/
+DOOM1.WAD
+
+# Editor / OS files
+*.swp
+*.swo
+*~
+.DS_Store

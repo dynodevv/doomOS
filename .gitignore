@@ -14,3 +14,4 @@ DOOM1.WAD
 *.swo
 *~
 .DS_Store
+_codeql_detected_source_root

@@ -137,6 +137,8 @@ void free(void *ptr)
 
 void *calloc(size_t nmemb, size_t size)
 {
+    /* Overflow check */
+    if (nmemb && size > (size_t)-1 / nmemb) return NULL;
     size_t total = nmemb * size;
     void *ptr = malloc(total);
     if (ptr) {
@@ -150,9 +152,12 @@ void *calloc(size_t nmemb, size_t size)
 
 void *realloc(void *old_ptr, size_t new_size)
 {
-    /* Simple strategy: always allocate new, copy old data.
-     * We don't know the old size, so we copy new_size bytes
-     * (safe because the old allocation is still valid memory). */
+    /*
+     * Bump allocator limitation: we don't track allocation sizes.
+     * We always allocate new memory and copy new_size bytes.
+     * This is safe in our unikernel because old memory remains
+     * mapped and accessible within the heap region.
+     */
     void *new_ptr = malloc(new_size);
     if (new_ptr && old_ptr) {
         uint8_t *dst = (uint8_t *)new_ptr;
@@ -646,15 +651,13 @@ void  I_SetMusicVolume(int volume) { (void)volume; }
 
 void  I_BindSoundVariables(void) {}
 
-/* math.h — use x87 FPU inline assembly or GCC builtins */
+/* math.h — implementations for freestanding environment */
 double floor(double x)
 {
-    double result;
-    __asm__ volatile (
-        "frndint" : "=t"(result) : "0"(x)
-    );
-    if (result > x) result -= 1.0;
-    return result;
+    /* Cast to integer truncates toward zero; adjust for negative values */
+    long long i = (long long)x;
+    double d = (double)i;
+    return (x < d) ? d - 1.0 : d;
 }
 
 double ceil(double x)

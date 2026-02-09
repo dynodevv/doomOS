@@ -59,6 +59,8 @@ static int scancode_to_doomkey(uint8_t sc)
     case SC_G: return 'g';  case SC_H: return 'h';
     case SC_I: return 'i';  case SC_J: return 'j';
     case SC_K: return 'k';  case SC_L: return 'l';
+    case SC_M: return 'm';  case SC_N: return 'n';
+    case SC_O: return 'o';  case SC_P: return 'p';
     case SC_Q: return 'q';  case SC_R: return 'r';
     case SC_S: return 's';  case SC_T: return 't';
     case SC_U: return 'u';  case SC_V: return 'v';

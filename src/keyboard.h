@@ -56,6 +56,9 @@
 #define SC_X           0x2D
 #define SC_C           0x2E
 #define SC_V           0x2F
+#define SC_B           0x30
+#define SC_N           0x31
+#define SC_M           0x32
 #define SC_SPACE       0x39
 #define SC_LSHIFT      0x2A
 #define SC_RSHIFT      0x36

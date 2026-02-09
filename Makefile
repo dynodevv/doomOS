@@ -19,8 +19,13 @@ OBJCOPY = objcopy
 
 CFLAGS  = -Wall -Wextra -std=gnu11 -O2 \
           -ffreestanding -fno-stack-protector -fno-stack-check \
-          -fno-pie -fno-PIC -m64 -march=x86-64 -mno-80387 -mno-mmx \
-          -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel
+          -fno-pie -fno-PIC -m64 -march=x86-64 \
+          -mno-red-zone -mcmodel=kernel
+
+# doomgeneric needs relaxed warnings for third-party code
+DOOM_CFLAGS = $(CFLAGS) \
+              -Wno-unused-parameter -Wno-sign-compare \
+              -Wno-missing-field-initializers
 
 LDFLAGS = -nostdlib -static -T linker.ld -z max-page-size=0x200000
 
@@ -34,7 +39,7 @@ WAD_FILE        = DOOM1.WAD
 # Limine binary release URL (v8.x branch)
 LIMINE_BRANCH   = v8.x-binary
 
-# Shareware DOOM1.WAD URL (Doomworld archive — legal shareware distribution)
+# Shareware DOOM1.WAD URL (legal shareware distribution)
 WAD_URL = https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad
 
 # ── Source files ────────────────────────────────────────────────────────────
@@ -42,13 +47,23 @@ WAD_URL = https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad
 KERNEL_SRC = src/kernel.c src/keyboard.c
 
 # Collect doomgeneric .c sources (exclude platform-specific files)
-DOOM_SRCS = $(filter-out $(DOOMGENERIC_SRC)/doomgeneric_xlib.c \
-                         $(DOOMGENERIC_SRC)/doomgeneric_sdl.c  \
-                         $(DOOMGENERIC_SRC)/doomgeneric_win.c  \
-                         $(DOOMGENERIC_SRC)/doomgeneric_sosol.c \
-                         $(DOOMGENERIC_SRC)/i_sound.c \
-                         $(DOOMGENERIC_SRC)/doomgeneric_null.c, \
-            $(wildcard $(DOOMGENERIC_SRC)/*.c))
+DOOM_EXCLUDE = $(DOOMGENERIC_SRC)/doomgeneric_xlib.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_sdl.c  \
+               $(DOOMGENERIC_SRC)/doomgeneric_win.c  \
+               $(DOOMGENERIC_SRC)/doomgeneric_soso.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_sosox.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_null.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_allegro.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_emscripten.c \
+               $(DOOMGENERIC_SRC)/doomgeneric_linuxvt.c \
+               $(DOOMGENERIC_SRC)/i_sound.c \
+               $(DOOMGENERIC_SRC)/i_sdlsound.c \
+               $(DOOMGENERIC_SRC)/i_sdlmusic.c \
+               $(DOOMGENERIC_SRC)/i_allegrosound.c \
+               $(DOOMGENERIC_SRC)/i_allegromusic.c \
+               $(DOOMGENERIC_SRC)/i_cdmus.c
+
+DOOM_SRCS = $(filter-out $(DOOM_EXCLUDE), $(wildcard $(DOOMGENERIC_SRC)/*.c))
 
 # Object files
 KERNEL_OBJ = $(KERNEL_SRC:.c=.o)
@@ -82,13 +97,13 @@ $(WAD_FILE):
 
 # ── Compile Rules ───────────────────────────────────────────────────────────
 
-# Kernel sources (include limine headers + doomgeneric headers)
+# Kernel sources (include limine headers + doomgeneric headers + our stubs)
 src/%.o: src/%.c $(DOOMGENERIC_SRC)/doomgeneric.h
-	$(CC) $(CFLAGS) -I$(LIMINE_DIR) -I$(DOOMGENERIC_SRC) -c $< -o $@
+	$(CC) $(CFLAGS) -isystem include -I$(LIMINE_DIR) -I$(DOOMGENERIC_SRC) -c $< -o $@
 
-# doomgeneric sources
+# doomgeneric sources (use DOOM_CFLAGS with x87 FPU and stub headers)
 $(DOOMGENERIC_SRC)/%.o: $(DOOMGENERIC_SRC)/%.c
-	$(CC) $(CFLAGS) -I$(DOOMGENERIC_SRC) -c $< -o $@
+	$(CC) $(DOOM_CFLAGS) -isystem include -I$(DOOMGENERIC_SRC) -c $< -o $@
 
 # Embed WAD into an object file placed in the .wad section
 $(WAD_OBJ): $(WAD_FILE)

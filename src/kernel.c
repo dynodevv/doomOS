@@ -11,6 +11,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdarg.h>
+
+/* Our freestanding stubs */
+#include <stdio.h>
+#include <sys/stat.h>
 
 /* Limine boot protocol headers */
 #include "limine.h"
@@ -296,6 +301,23 @@ int atoi(const char *s)
     return (int)strtol(s, NULL, 10);
 }
 
+double atof(const char *s)
+{
+    double result = 0.0;
+    double fraction = 0.0;
+    int sign = 1;
+    while (*s == ' ' || *s == '\t') s++;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') { s++; }
+    while (*s >= '0' && *s <= '9') { result = result * 10.0 + (*s - '0'); s++; }
+    if (*s == '.') {
+        s++;
+        double place = 0.1;
+        while (*s >= '0' && *s <= '9') { fraction += (*s - '0') * place; place *= 0.1; s++; }
+    }
+    return sign * (result + fraction);
+}
+
 int abs(int x) { return x < 0 ? -x : x; }
 
 /* ================================================================== */
@@ -305,36 +327,44 @@ int abs(int x) { return x < 0 ? -x : x; }
 /*
  * doomgeneric's WAD loader calls fopen / fread / fseek / ftell / fclose.
  * We redirect these to operate over the embedded WAD blob in memory.
+ * FILE is typedef'd to struct _MEMFILE in our stdio.h stub.
  */
 
-typedef struct {
+/* We support a small number of open "files" */
+#define MAX_OPEN_FILES 8
+
+struct _MEMFILE {
     const uint8_t *base;
     size_t         size;
     size_t         pos;
-} MEMFILE;
+    int            in_use;
+};
 
-/* We only ever open one file: the WAD */
-static MEMFILE wad_file;
-static int     wad_file_open = 0;
+static struct _MEMFILE open_files[MAX_OPEN_FILES];
 
-typedef MEMFILE FILE;
+/* stdin/stdout/stderr stubs (never used meaningfully) */
+FILE *stdin  = NULL;
+FILE *stdout = NULL;
+FILE *stderr = NULL;
 
-#define SEEK_SET 0
-#define SEEK_CUR 1
-#define SEEK_END 2
-
-#define EOF (-1)
+/* errno stub */
+int errno = 0;
 
 FILE *fopen(const char *path, const char *mode)
 {
     (void)path;
     (void)mode;
-    /* Any fopen call in Doom is for the WAD — point to embedded blob */
-    wad_file.base = _binary_DOOM1_WAD_start;
-    wad_file.size = (size_t)(_binary_DOOM1_WAD_end - _binary_DOOM1_WAD_start);
-    wad_file.pos  = 0;
-    wad_file_open = 1;
-    return &wad_file;
+    /* Find a free file slot and point it to the embedded WAD blob */
+    for (int i = 0; i < MAX_OPEN_FILES; i++) {
+        if (!open_files[i].in_use) {
+            open_files[i].base   = _binary_DOOM1_WAD_start;
+            open_files[i].size   = (size_t)(_binary_DOOM1_WAD_end - _binary_DOOM1_WAD_start);
+            open_files[i].pos    = 0;
+            open_files[i].in_use = 1;
+            return &open_files[i];
+        }
+    }
+    return NULL;
 }
 
 size_t fread(void *ptr, size_t elem_size, size_t count, FILE *stream)
@@ -369,8 +399,7 @@ long ftell(FILE *stream)
 
 int fclose(FILE *stream)
 {
-    (void)stream;
-    wad_file_open = 0;
+    if (stream) stream->in_use = 0;
     return 0;
 }
 
@@ -395,6 +424,15 @@ int snprintf(char *buf, size_t n, const char *fmt, ...)
     if (n > 0) buf[0] = '\0';
     return 0;
 }
+int vprintf(const char *fmt, __builtin_va_list ap)  { (void)fmt; (void)ap; return 0; }
+int vfprintf(FILE *f, const char *fmt, __builtin_va_list ap) { (void)f; (void)fmt; (void)ap; return 0; }
+int vsprintf(char *buf, const char *fmt, __builtin_va_list ap) { (void)fmt; (void)ap; buf[0]='\0'; return 0; }
+int vsnprintf(char *buf, size_t n, const char *fmt, __builtin_va_list ap)
+{
+    (void)fmt; (void)ap;
+    if (n > 0) buf[0] = '\0';
+    return 0;
+}
 int sscanf(const char *str, const char *fmt, ...)
 {
     (void)str;
@@ -403,6 +441,44 @@ int sscanf(const char *str, const char *fmt, ...)
 }
 int puts(const char *s) { (void)s; return 0; }
 int putchar(int c) { (void)c; return 0; }
+
+/* Additional FILE stubs */
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+    (void)ptr; (void)size; (void)nmemb; (void)stream;
+    return nmemb;
+}
+int fflush(FILE *stream) { (void)stream; return 0; }
+int ferror(FILE *stream) { (void)stream; return 0; }
+int fgetc(FILE *stream)
+{
+    if (!stream || stream->pos >= stream->size) return EOF;
+    return stream->base[stream->pos++];
+}
+char *fgets(char *s, int size, FILE *stream)
+{
+    if (!stream || size <= 0) return NULL;
+    int i = 0;
+    while (i < size - 1 && stream->pos < stream->size) {
+        s[i] = (char)stream->base[stream->pos++];
+        if (s[i] == '\n') { i++; break; }
+        i++;
+    }
+    if (i == 0) return NULL;
+    s[i] = '\0';
+    return s;
+}
+int fputc(int c, FILE *stream) { (void)c; (void)stream; return c; }
+int fputs(const char *s, FILE *stream) { (void)s; (void)stream; return 0; }
+int ungetc(int c, FILE *stream) { (void)c; (void)stream; return c; }
+void rewind(FILE *stream) { if (stream) stream->pos = 0; }
+FILE *freopen(const char *path, const char *mode, FILE *stream)
+{
+    (void)path; (void)mode; (void)stream;
+    return NULL;
+}
+int remove(const char *path) { (void)path; return -1; }
+int fileno(FILE *stream) { (void)stream; return -1; }
 
 /* Doom calls exit() on fatal errors — halt the CPU */
 void exit(int status)
@@ -416,6 +492,259 @@ char *getenv(const char *name)
 {
     (void)name;
     return NULL;
+}
+
+/* ================================================================== */
+/*  Additional Stubs for doomgeneric                                  */
+/* ================================================================== */
+
+/* string.h extras */
+char *strcat(char *dest, const char *src)
+{
+    char *d = dest;
+    while (*d) d++;
+    while ((*d++ = *src++));
+    return dest;
+}
+
+char *strncat(char *dest, const char *src, size_t n)
+{
+    char *d = dest;
+    while (*d) d++;
+    for (size_t i = 0; i < n && src[i]; i++) *d++ = src[i];
+    *d = '\0';
+    return dest;
+}
+
+char *strstr(const char *haystack, const char *needle)
+{
+    if (!*needle) return (char *)haystack;
+    for (; *haystack; haystack++) {
+        const char *h = haystack, *n = needle;
+        while (*h && *n && *h == *n) { h++; n++; }
+        if (!*n) return (char *)haystack;
+    }
+    return NULL;
+}
+
+size_t strspn(const char *s, const char *accept)
+{
+    size_t count = 0;
+    for (; *s; s++) {
+        const char *a = accept;
+        int found = 0;
+        for (; *a; a++) if (*s == *a) { found = 1; break; }
+        if (!found) break;
+        count++;
+    }
+    return count;
+}
+
+size_t strcspn(const char *s, const char *reject)
+{
+    size_t count = 0;
+    for (; *s; s++) {
+        const char *r = reject;
+        for (; *r; r++) if (*s == *r) return count;
+        count++;
+    }
+    return count;
+}
+
+char *strtok(char *str, const char *delim)
+{
+    static char *saved;
+    if (str) saved = str;
+    if (!saved) return NULL;
+    saved += strspn(saved, delim);
+    if (!*saved) { saved = NULL; return NULL; }
+    char *token = saved;
+    saved += strcspn(saved, delim);
+    if (*saved) *saved++ = '\0';
+    else saved = NULL;
+    return token;
+}
+
+char *strerror(int errnum)
+{
+    (void)errnum;
+    return "error";
+}
+
+int strcasecmp(const char *a, const char *b)
+{
+    while (*a && *b) {
+        int ca = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a;
+        int cb = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
+        if (ca != cb) return ca - cb;
+        a++; b++;
+    }
+    return *(unsigned char *)a - *(unsigned char *)b;
+}
+
+int strncasecmp(const char *a, const char *b, size_t n)
+{
+    for (size_t i = 0; i < n && *a && *b; i++, a++, b++) {
+        int ca = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a;
+        int cb = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
+        if (ca != cb) return ca - cb;
+    }
+    return 0;
+}
+
+/* unistd.h / fcntl.h stubs */
+int access(const char *path, int mode) { (void)path; (void)mode; return -1; }
+int close(int fd) { (void)fd; return 0; }
+int open(const char *path, int flags, ...) { (void)path; (void)flags; return -1; }
+int stat(const char *path, struct stat *buf) { (void)path; (void)buf; return -1; }
+int mkdir(const char *path, unsigned int mode) { (void)path; (void)mode; return -1; }
+int rename(const char *old, const char *new_name) { (void)old; (void)new_name; return -1; }
+
+/* system() stub — Doom calls this on I_Error for cleanup */
+int system(const char *cmd) { (void)cmd; return -1; }
+
+/* ================================================================== */
+/*  Sound Stubs (no audio hardware driver)                            */
+/* ================================================================== */
+
+/*
+ * doomgeneric's sound system expects these functions from i_sound.c.
+ * Since we have no audio driver, all are no-ops.
+ */
+
+/* Global referenced by s_sound.c */
+int snd_musicdevice = 0;
+
+void I_InitSound(void) {}
+void I_ShutdownSound(void) {}
+void I_InitMusic(void) {}
+void I_ShutdownMusic(void) {}
+
+int I_GetSfxLumpNum(void *sfxinfo) { (void)sfxinfo; return 0; }
+int I_StartSound(void *sfxinfo, int channel, int vol, int sep)
+{
+    (void)sfxinfo; (void)channel; (void)vol; (void)sep;
+    return 0;
+}
+void I_StopSound(int channel) { (void)channel; }
+int  I_SoundIsPlaying(int channel) { (void)channel; return 0; }
+void I_UpdateSound(void) {}
+void I_UpdateSoundParams(int channel, int vol, int sep)
+{
+    (void)channel; (void)vol; (void)sep;
+}
+void I_PrecacheSounds(void *sounds, int num) { (void)sounds; (void)num; }
+
+void *I_RegisterSong(void *data, int len) { (void)data; (void)len; return NULL; }
+void  I_UnRegisterSong(void *handle) { (void)handle; }
+void  I_PlaySong(void *handle, int looping) { (void)handle; (void)looping; }
+void  I_PauseSong(void) {}
+void  I_ResumeSong(void) {}
+void  I_StopSong(void) {}
+int   I_MusicIsPlaying(void) { return 0; }
+void  I_SetMusicVolume(int volume) { (void)volume; }
+
+void  I_BindSoundVariables(void) {}
+
+/* math.h — use x87 FPU inline assembly or GCC builtins */
+double floor(double x)
+{
+    double result;
+    __asm__ volatile (
+        "frndint" : "=t"(result) : "0"(x)
+    );
+    if (result > x) result -= 1.0;
+    return result;
+}
+
+double ceil(double x)
+{
+    double f = floor(x);
+    return (x > f) ? f + 1.0 : f;
+}
+
+double fabs(double x) { return x < 0.0 ? -x : x; }
+float  fabsf(float x) { return x < 0.0f ? -x : x; }
+
+double sqrt(double x)
+{
+    double result;
+    __asm__ volatile ("fsqrt" : "=t"(result) : "0"(x));
+    return result;
+}
+
+double sin(double x)
+{
+    double result;
+    __asm__ volatile ("fsin" : "=t"(result) : "0"(x));
+    return result;
+}
+
+double cos(double x)
+{
+    double result;
+    __asm__ volatile ("fcos" : "=t"(result) : "0"(x));
+    return result;
+}
+
+double atan2(double y, double x)
+{
+    double result;
+    __asm__ volatile ("fpatan" : "=t"(result) : "0"(x), "u"(y) : "st(1)");
+    return result;
+}
+
+double log(double x)
+{
+    double result;
+    double one = 1.0;
+    __asm__ volatile (
+        "fldln2\n\t"
+        "fxch %%st(1)\n\t"
+        "fyl2x"
+        : "=t"(result) : "0"(x), "u"(one) : "st(1)"
+    );
+    return result;
+}
+
+double pow(double base, double exp)
+{
+    /* Simple integer exponent fast path; general case via exp(exp*log(base)) */
+    if (base == 0.0) return 0.0;
+    if (exp == 0.0) return 1.0;
+    double ln_base = log(fabs(base));
+    double result;
+    double val = exp * ln_base;
+    /* e^val via x87: 2^(val/ln2) */
+    __asm__ volatile (
+        "fldl2e\n\t"
+        "fmulp %%st, %%st(1)\n\t"
+        "fld %%st(0)\n\t"
+        "frndint\n\t"
+        "fsub %%st, %%st(1)\n\t"
+        "fxch\n\t"
+        "f2xm1\n\t"
+        "fld1\n\t"
+        "faddp\n\t"
+        "fscale\n\t"
+        "fstp %%st(1)"
+        : "=t"(result) : "0"(val)
+    );
+    return (base < 0.0 && ((int)exp & 1)) ? -result : result;
+}
+
+double fmod(double x, double y)
+{
+    if (y == 0.0) return 0.0;
+    return x - floor(x / y) * y;
+}
+
+double ldexp(double x, int exp)
+{
+    /* x * 2^exp */
+    while (exp > 0) { x *= 2.0; exp--; }
+    while (exp < 0) { x *= 0.5; exp++; }
+    return x;
 }
 
 /* ================================================================== */
@@ -468,8 +797,8 @@ void DG_Init(void)
  * nearest-neighbour blit.
  */
 extern uint32_t *DG_ScreenBuffer;
-#define DOOM_RESX 320
-#define DOOM_RESY 200
+#define DOOM_RESX DOOMGENERIC_RESX
+#define DOOM_RESY DOOMGENERIC_RESY
 
 void DG_DrawFrame(void)
 {
@@ -513,17 +842,16 @@ uint32_t DG_GetTicksMs(void)
     return get_ms();
 }
 
-void DG_GetKey(int *pressed, unsigned char *key)
+int DG_GetKey(int *pressed, unsigned char *key)
 {
     int doom_key;
     int is_pressed;
     if (keyboard_poll(&doom_key, &is_pressed)) {
         *pressed = is_pressed;
         *key     = (unsigned char)doom_key;
-    } else {
-        *pressed = 0;
-        *key     = 0;
+        return 1;
     }
+    return 0;
 }
 
 void DG_SetWindowTitle(const char *title)

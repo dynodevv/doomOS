@@ -83,6 +83,9 @@ extern const uint8_t _binary_DOOM1_WAD_end[];
  * Doom's allocation pattern (large up-front allocations, never freed).
  */
 
+/* Forward declaration — defined near _start */
+static void halt(void) __attribute__((noreturn));
+
 static uint8_t *heap_base = NULL;
 static uint8_t *heap_ptr  = NULL;
 static uint8_t *heap_end  = NULL;
@@ -91,7 +94,11 @@ static void heap_init(void)
 {
     struct limine_memmap_response *mm = memmap_request.response;
     if (!mm) {
-        for (;;) __asm__ volatile ("hlt");
+        halt();
+    }
+
+    if (!hhdm_request.response) {
+        halt();
     }
 
     uint64_t best_size = 0;
@@ -107,7 +114,7 @@ static void heap_init(void)
     }
 
     if (best_size == 0) {
-        for (;;) __asm__ volatile ("hlt");
+        halt();
     }
 
     /* Map through the Higher-Half Direct Map so we can access it */
@@ -866,12 +873,36 @@ void DG_SetWindowTitle(const char *title)
 /*  Kernel Entry Point                                                */
 /* ================================================================== */
 
+/* BSS boundaries — provided by the linker script */
+extern uint8_t __bss_start[];
+extern uint8_t __bss_end[];
+
+static void halt(void) __attribute__((noreturn));
+static void halt(void)
+{
+    for (;;) __asm__ volatile ("hlt");
+}
+
+void _start(void) __attribute__((noreturn));
 void _start(void)
 {
+    /* ---- Zero BSS (freestanding — not done automatically) ---- */
+    {
+        uint64_t *p = (uint64_t *)__bss_start;
+        uint64_t *end = (uint64_t *)__bss_end;
+        while (p < end)
+            *p++ = 0;
+    }
+
+    /* ---- Verify Limine base revision handshake ---- */
+    if (!LIMINE_BASE_REVISION_SUPPORTED) {
+        halt();
+    }
+
     /* ---- Framebuffer setup ---- */
     struct limine_framebuffer_response *fb_resp = fb_request.response;
     if (!fb_resp || fb_resp->framebuffer_count < 1) {
-        for (;;) __asm__ volatile ("hlt");
+        halt();
     }
 
     struct limine_framebuffer *fb = fb_resp->framebuffers[0];

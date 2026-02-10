@@ -33,22 +33,6 @@ SECTIONS
         *(.rodata .rodata.*)
     } :rodata
 
-    /* Limine request markers — bootloader scans for these */
-    .limine_requests_start ALIGN(0x1000) : AT(ADDR(.limine_requests_start) - KERNEL_VIRT_BASE)
-    {
-        KEEP(*(.limine_requests_start))
-    } :rodata
-
-    .limine_requests ALIGN(0x1000) : AT(ADDR(.limine_requests) - KERNEL_VIRT_BASE)
-    {
-        KEEP(*(.limine_requests))
-    } :rodata
-
-    .limine_requests_end ALIGN(0x1000) : AT(ADDR(.limine_requests_end) - KERNEL_VIRT_BASE)
-    {
-        KEEP(*(.limine_requests_end))
-    } :rodata
-
     /* Embedded WAD file — symbols exposed to C code */
     .wad ALIGN(0x200000) : AT(ADDR(.wad) - KERNEL_VIRT_BASE)
     {
@@ -62,10 +46,31 @@ SECTIONS
         *(.data .data.*)
     } :data
 
+    /*
+     * Limine request markers — bootloader writes response pointers into
+     * these structures, so they MUST be in a writable (rw-) segment.
+     */
+    .limine_requests_start ALIGN(0x1000) : AT(ADDR(.limine_requests_start) - KERNEL_VIRT_BASE)
+    {
+        KEEP(*(.limine_requests_start))
+    } :data
+
+    .limine_requests ALIGN(0x1000) : AT(ADDR(.limine_requests) - KERNEL_VIRT_BASE)
+    {
+        KEEP(*(.limine_requests))
+    } :data
+
+    .limine_requests_end ALIGN(0x1000) : AT(ADDR(.limine_requests_end) - KERNEL_VIRT_BASE)
+    {
+        KEEP(*(.limine_requests_end))
+    } :data
+
     .bss ALIGN(0x200000) : AT(ADDR(.bss) - KERNEL_VIRT_BASE)
     {
+        __bss_start = .;
         *(COMMON)
         *(.bss .bss.*)
+        __bss_end = .;
     } :data
 
     /DISCARD/ :

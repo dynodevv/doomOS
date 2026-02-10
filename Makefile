@@ -91,14 +91,17 @@ $(LIMINE_DIR)/limine:
 	git clone --depth 1 --branch $(LIMINE_BRANCH) https://github.com/limine-bootloader/limine.git $(LIMINE_DIR)
 	$(MAKE) -C $(LIMINE_DIR)
 
+# limine.h is available once Limine is cloned
+$(LIMINE_DIR)/limine.h: $(LIMINE_DIR)/limine
+
 $(WAD_FILE):
 	@echo "==> Downloading shareware DOOM1.WAD..."
 	curl -fL -o $(WAD_FILE) "$(WAD_URL)"
 
 # ── Compile Rules ───────────────────────────────────────────────────────────
 
-# Kernel sources (include limine headers + doomgeneric headers + our stubs)
-src/%.o: src/%.c $(DOOMGENERIC_SRC)/doomgeneric.h
+# Kernel sources need both limine headers and doomgeneric headers
+src/%.o: src/%.c $(DOOMGENERIC_SRC)/doomgeneric.h $(LIMINE_DIR)/limine.h
 	$(CC) $(CFLAGS) -isystem include -I$(LIMINE_DIR) -I$(DOOMGENERIC_SRC) -c $< -o $@
 
 # doomgeneric sources (use DOOM_CFLAGS with x87 FPU and stub headers)

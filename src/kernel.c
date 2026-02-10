@@ -42,7 +42,7 @@ __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
 
 __attribute__((used, section(".limine_requests")))
-static volatile LIMINE_BASE_REVISION(3);
+static volatile LIMINE_BASE_REVISION(2);
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request fb_request = {
@@ -496,7 +496,7 @@ int fileno(FILE *stream) { (void)stream; return -1; }
 void exit(int status)
 {
     (void)status;
-    for (;;) __asm__ volatile ("hlt");
+    halt();
 }
 
 /* getenv stub — no environment variables */
@@ -880,12 +880,18 @@ extern uint8_t __bss_end[];
 static void halt(void) __attribute__((noreturn));
 static void halt(void)
 {
+    __asm__ volatile ("cli");
+    /* Mask NMIs by setting bit 7 of CMOS address register (port 0x70) */
+    __asm__ volatile ("outb %%al, $0x70" : : "a"((uint8_t)0x80) : "memory");
     for (;;) __asm__ volatile ("hlt");
 }
 
 void _start(void) __attribute__((noreturn));
 void _start(void)
 {
+    /* Ensure interrupts are disabled on entry */
+    __asm__ volatile ("cli");
+
     /* ---- Zero BSS (freestanding — not done automatically) ---- */
     {
         uint64_t *p = (uint64_t *)__bss_start;

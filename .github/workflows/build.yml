@@ -1,0 +1,36 @@
+name: Build doomOS
+
+on:
+  push:
+    branches: [ main, master, 'copilot/**' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm gcc make xorriso mtools curl git
+
+      - name: Fetch dependencies (doomgeneric, Limine, WAD)
+        run: make deps
+
+      - name: Build doomOS ISO
+        run: make all
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doomOS-iso
+          path: doomOS.iso
+          retention-days: 30

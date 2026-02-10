@@ -1,0 +1,18 @@
+# Build artifacts
+*.o
+*.elf
+*.iso
+*.bin
+iso_root/
+
+# Dependencies (fetched at build time)
+doomgeneric/
+limine/
+DOOM1.WAD
+
+# Editor / OS files
+*.swp
+*.swo
+*~
+.DS_Store
+_codeql_detected_source_root

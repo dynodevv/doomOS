@@ -3,6 +3,7 @@
 *.elf
 *.iso
 *.bin
+iso_root/
 
 # Dependencies (fetched at build time)
 doomgeneric/

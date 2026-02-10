@@ -93,7 +93,7 @@ $(LIMINE_DIR)/limine:
 
 $(WAD_FILE):
 	@echo "==> Downloading shareware DOOM1.WAD..."
-	curl -L -o $(WAD_FILE) "$(WAD_URL)"
+	curl -fL -o $(WAD_FILE) "$(WAD_URL)"
 
 # ── Compile Rules ───────────────────────────────────────────────────────────
 
